@@ -8,7 +8,7 @@ export interface IMessage {
 }
 
 export interface IChat extends Document {
-  participants: string[]; // array of user IDs
+  participants: string[];
   messages: IMessage[];
 }
 
