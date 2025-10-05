@@ -7,14 +7,12 @@ interface ChatMessageProps {
 
 const ChatMessage: FC<ChatMessageProps> = ({ text, isUser }) => {
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-2`}>
-      <div
-        className={`p-3 rounded-lg max-w-xs ${
-          isUser ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-900"
-        }`}
-      >
-        {text}
-      </div>
+    <div
+      className={`p-2 rounded-lg max-w-[80%] ${
+        isUser ? "bg-blue-500 text-white ml-auto" : "bg-gray-200 text-black"
+      }`}
+    >
+      {text}
     </div>
   );
 };

@@ -1,6 +1,6 @@
+import { useState } from "react";
 import { Button } from "./Button";
 import type { FC, KeyboardEvent } from "react";
-import { useState } from "react";
 
 interface ChatInputProps {
   onSend: (text: string) => void;
