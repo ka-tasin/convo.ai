@@ -9,6 +9,7 @@ interface Message {
   senderName: string;
   receiverId: string;
   content: string;
+  timestamp: number;
 }
 
 interface TokenPayload {
@@ -17,12 +18,15 @@ interface TokenPayload {
 }
 
 const Chat = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<TokenPayload[]>([]);
-  const [receiverId, setReceiverId] = useState("");
   const [userId, setUserId] = useState("");
   const [username, setUsername] = useState("");
+  const [onlineUsers, setOnlineUsers] = useState<TokenPayload[]>([]);
+  const [currentChatUser, setCurrentChatUser] = useState<TokenPayload | null>(
+    null
+  );
+  const [messages, setMessages] = useState<Message[]>([]);
 
+  // Load current user & register socket
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -31,72 +35,91 @@ const Chat = () => {
     setUserId(decoded.id);
     setUsername(decoded.username);
 
-    // Register user with the server
     socket.emit("registerUser", token);
 
-    // Listen for online users
     socket.on("onlineUsers", (users: TokenPayload[]) => {
-      setOnlineUsers(users.filter((u) => u.id !== decoded.id)); // exclude self
+      setOnlineUsers(users.filter((u) => u.id !== decoded.id));
     });
 
-    // Listen for incoming messages
     socket.on("receiveMessage", (msg: Message) => {
-      setMessages((prev) => [...prev, msg]);
+      // Add message if it's part of current conversation
+      if (
+        currentChatUser &&
+        (msg.senderId === currentChatUser.id ||
+          msg.receiverId === currentChatUser.id)
+      ) {
+        setMessages((prev) => [...prev, msg]);
+      }
     });
 
     return () => {
       socket.off("onlineUsers");
       socket.off("receiveMessage");
     };
-  }, []);
+  }, [currentChatUser]);
+
+  const startConversation = (user: TokenPayload) => {
+    setCurrentChatUser(user);
+    // Load previous messages
+    socket.emit("loadConversation", { userId, otherId: user.id });
+    socket.once("conversationLoaded", (msgs: Message[]) => setMessages(msgs));
+  };
 
   const handleSend = (text: string) => {
-    if (!text.trim() || !receiverId) return;
-
-    const message: Message = {
+    if (!text.trim() || !currentChatUser) return;
+    const msg: Message = {
       senderId: userId,
-      receiverId,
-      content: text,
       senderName: username,
+      receiverId: currentChatUser.id,
+      content: text,
+      timestamp: Date.now(),
     };
-    socket.emit("sendMessage", message);
-
-    // Add your own message locally
-    // setMessages((prev) => [...prev, message]);
+    socket.emit("sendMessage", msg);
+    setMessages((prev) => [...prev, msg]);
   };
 
   return (
-    <div className="p-8 flex flex-col h-[80vh] max-w-2xl mx-auto">
-      <h2 className="text-xl font-bold mb-4">Logged in as {username}</h2>
-
-      <div className="mb-2">
-        <select
-          value={receiverId}
-          onChange={(e) => setReceiverId(e.target.value)}
-          className="border p-2 rounded w-full"
-        >
-          <option value="">Select a user to chat</option>
-          {onlineUsers.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.username}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex-1 overflow-y-auto border rounded-lg p-4 space-y-2">
-        {messages.map((msg, idx) => (
-          <ChatMessage
-            key={idx}
-            text={`${msg.senderId === userId ? "You" : msg.senderName}: ${
-              msg.content
+    <div className="flex h-[80vh] max-w-4xl mx-auto border rounded overflow-hidden">
+      {/* Online Users Sidebar */}
+      <div className="w-1/3 border-r p-4 overflow-y-auto">
+        <h2 className="font-bold mb-4">Online Users</h2>
+        {onlineUsers.map((user) => (
+          <div
+            key={user.id}
+            className={`p-2 cursor-pointer hover:bg-gray-200 ${
+              currentChatUser?.id === user.id ? "bg-gray-300" : ""
             }`}
-            isUser={msg.senderId === userId}
-          />
+            onClick={() => startConversation(user)}
+          >
+            {user.username}
+          </div>
         ))}
       </div>
 
-      <ChatInput onSend={handleSend} />
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col p-4">
+        {currentChatUser ? (
+          <>
+            <h2 className="font-bold mb-2">{currentChatUser.username}</h2>
+            <div className="flex-1 overflow-y-auto border rounded p-2 space-y-2 mb-2">
+              {messages.map((msg, idx) => (
+                <ChatMessage
+                  key={idx}
+                  text={`${msg.senderId === userId ? "You" : msg.senderName}: ${
+                    msg.content
+                  }`}
+                  isUser={msg.senderId === userId}
+                />
+              ))}
+            </div>
+            <ChatInput onSend={handleSend} />
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-400">
+            Select a user to start chatting
+          </div>
+        )}
+      </div>
     </div>
   );
 };
