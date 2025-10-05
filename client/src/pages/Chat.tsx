@@ -62,7 +62,7 @@ const Chat = () => {
     socket.emit("sendMessage", message);
 
     // Add your own message locally
-    setMessages((prev) => [...prev, message]);
+    // setMessages((prev) => [...prev, message]);
   };
 
   return (
