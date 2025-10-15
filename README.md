@@ -4,7 +4,7 @@
 
 A full-stack real-time messaging application featuring AI assistant integration. Perfect for demonstrations and interviews.
 
-# Frontend Live: https://convo-ai-xi.vercel.app
+## Frontend Live: https://convo-ai-xi.vercel.app
 
 ## 🚀 Features
 
