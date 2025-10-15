@@ -144,7 +144,7 @@ const Home: FC = () => {
               Ready to Experience?
             </h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Join thousands of users enjoying seamless AI-powered conversations
+              Join of users enjoying seamless AI-powered conversations
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/chat" className="w-full sm:w-auto">

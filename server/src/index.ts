@@ -281,6 +281,10 @@ io.on("connection", (socket) => {
           username: decoded.username,
           lastSeen: Date.now(),
         };
+      } else {
+        // Update existing user
+        allUsers[decoded.id].username = decoded.username;
+        allUsers[decoded.id].lastSeen = Date.now();
       }
 
       // Update online users
@@ -288,15 +292,6 @@ io.on("connection", (socket) => {
         socketId: socket.id,
         username: decoded.username,
       };
-
-      // Update last seen
-      if (allUsers[decoded.id]) {
-        if (allUsers[decoded.id]) {
-          if (allUsers[decoded.id]) {
-            allUsers[decoded.id].lastSeen = Date.now();
-          }
-        }
-      }
 
       console.log(`User ${decoded.username} (${decoded.id}) came online`);
 

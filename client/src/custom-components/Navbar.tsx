@@ -15,6 +15,11 @@ const Navbar: FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  // Don't show navbar on auth pages if that's the intended behavior
+  if (location.pathname === "/login" || location.pathname === "/register") {
+    return null;
+  }
+
   return (
     <nav className="bg-gradient-to-r h-[10vh] from-purple-600 to-blue-600 shadow-2xl border-b border-purple-400/30 backdrop-blur-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
