@@ -1,8 +1,15 @@
 import { createContext } from "react";
 
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  token: string;
+}
+
 type AuthContextType = {
-  user: { token: string } | null;
-  setUser: React.Dispatch<React.SetStateAction<{ token: string } | null>>;
+  user: User | null;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
   logout: () => void;
 };
 

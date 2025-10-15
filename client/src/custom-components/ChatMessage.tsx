@@ -7,27 +7,33 @@ interface ChatMessageProps {
 const ChatMessage = ({ text, isUser, isChatGPT }: ChatMessageProps) => {
   if (isChatGPT) {
     return (
-      <div className="max-w-xs md:max-w-md lg:max-w-lg bg-gradient-to-r from-green-100 to-blue-100 border border-green-200 rounded-lg p-3 mx-auto">
-        <div className="flex items-center mb-1">
-          <div className="w-6 h-6 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center mr-2">
+      <div className="max-w-2xl bg-gray-700/30 border border-gray-600/30 rounded-2xl p-5 backdrop-blur-sm shadow-lg">
+        <div className="flex items-center mb-3">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg">
             <span className="text-white text-xs font-bold">AI</span>
           </div>
-          <span className="text-xs font-semibold text-green-800">
+          <span className="text-sm font-semibold text-gray-300">
             AI Assistant
           </span>
         </div>
-        <p className="text-gray-800 text-sm whitespace-pre-wrap">{text}</p>
+        <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
+          {text}
+        </p>
       </div>
     );
   }
 
   return (
     <div
-      className={`max-w-xs md:max-w-md lg:max-w-lg rounded-lg p-3 ${
-        isUser ? "bg-blue-500 text-white ml-auto" : "bg-gray-200 text-gray-800"
+      className={`max-w-2xl rounded-2xl p-5 backdrop-blur-sm shadow-lg ${
+        isUser
+          ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-blue-500/25"
+          : "bg-gray-700/30 text-gray-200 border border-gray-600/30"
       }`}
     >
-      <p className="whitespace-pre-wrap break-words">{text}</p>
+      <p className="whitespace-pre-wrap break-words leading-relaxed text-sm">
+        {text}
+      </p>
     </div>
   );
 };
