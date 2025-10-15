@@ -10,6 +10,7 @@ interface Message {
   receiverId: string;
   content: string;
   timestamp: number;
+  isChatGPT?: boolean;
 }
 
 interface TokenPayload {
@@ -26,6 +27,12 @@ const Chat = () => {
   );
   const [messages, setMessages] = useState<Message[]>([]);
   const currentChatUserRef = useRef<TokenPayload | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // Load current user & register socket
   useEffect(() => {
@@ -49,7 +56,8 @@ const Chat = () => {
         if (
           currentChatUserRef.current &&
           (msg.senderId === currentChatUserRef.current.id ||
-            msg.receiverId === currentChatUserRef.current.id)
+            msg.receiverId === currentChatUserRef.current.id ||
+            msg.senderId === "chatgpt")
         ) {
           return [...prev, msg];
         }
@@ -62,9 +70,11 @@ const Chat = () => {
       socket.off("receiveMessage");
     };
   }, []);
+
   const startConversation = (user: TokenPayload) => {
     setCurrentChatUser(user);
     currentChatUserRef.current = user;
+    setMessages([]);
 
     // Load previous messages
     socket.emit("loadConversation", { userId, otherId: user.id });
@@ -81,7 +91,13 @@ const Chat = () => {
       timestamp: Date.now(),
     };
     socket.emit("sendMessage", msg);
-    // setMessages((prev) => [...prev, msg]);
+  };
+
+  const getMessageDisplayName = (msg: Message) => {
+    if (msg.senderId === "chatgpt") {
+      return "ChatGPT";
+    }
+    return msg.senderId === userId ? "You" : msg.senderName;
   };
 
   return (
@@ -100,41 +116,91 @@ const Chat = () => {
             {user.username}
           </div>
         ))}
+
+        {/* ChatGPT Info */}
+        <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+          <h3 className="font-bold text-blue-800 mb-2">ChatGPT Assistant</h3>
+          <p className="text-sm text-blue-600">
+            To ask ChatGPT, start your message with <code>@chatgpt</code>,{" "}
+            <code>@ai</code>, or <code>@gpt</code>, or simply ask a question
+            ending with ?
+          </p>
+          <p className="text-xs text-blue-500 mt-2">
+            Both you and {currentChatUser?.username || "the other user"} will
+            see ChatGPT's responses.
+          </p>
+        </div>
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col p-4">
+      <div className="flex-1 flex flex-col">
         {currentChatUser ? (
           <>
-            <h2 className="font-bold mb-2">{currentChatUser.username}</h2>
-            <div className="flex-1 overflow-y-auto border rounded p-2 mb-2">
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`mb-2 flex flex-col ${
-                    msg.senderId === userId ? "items-end" : "items-start"
-                  }`}
-                >
-                  <p
-                    className={`text-xs text-gray-400 mb-1 ${
-                      msg.senderId === userId ? "text-right" : "text-left"
+            <div className="p-4 border-b bg-white">
+              <h2 className="font-bold">{currentChatUser.username}</h2>
+              <p className="text-sm text-gray-500">
+                Chat with {currentChatUser.username} and ChatGPT
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+              {messages.length === 0 ? (
+                <div className="text-center text-gray-400 mt-8">
+                  <p>No messages yet. Start a conversation!</p>
+                  <p className="text-sm mt-2">
+                    Tip: Ask ChatGPT by starting with @chatgpt or asking a
+                    question
+                  </p>
+                </div>
+              ) : (
+                messages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    className={`mb-4 flex flex-col ${
+                      msg.senderId === userId
+                        ? "items-end"
+                        : msg.senderId === "chatgpt"
+                        ? "items-center"
+                        : "items-start"
                     }`}
                   >
-                    {msg.senderId === userId ? "You" : msg.senderName}
-                  </p>
+                    <p
+                      className={`text-xs text-gray-500 mb-1 ${
+                        msg.senderId === userId ? "text-right" : "text-left"
+                      }`}
+                    >
+                      {getMessageDisplayName(msg)}
+                      <span className="ml-2 text-gray-400">
+                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </p>
 
-                  <ChatMessage
-                    text={`${msg.content}`}
-                    isUser={msg.senderId === userId}
-                  />
-                </div>
-              ))}
+                    <ChatMessage
+                      text={msg.content}
+                      isUser={msg.senderId === userId}
+                      isChatGPT={msg.senderId === "chatgpt"}
+                    />
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
             </div>
-            <ChatInput onSend={handleSend} />
+
+            <div className="p-4 border-t bg-white">
+              <ChatInput onSend={handleSend} />
+            </div>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400">
-            Select a user to start chatting
+            <div className="text-center">
+              <p>Select a user to start chatting</p>
+              <p className="text-sm mt-2">
+                ChatGPT is available in all conversations
+              </p>
+            </div>
           </div>
         )}
       </div>

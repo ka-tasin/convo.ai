@@ -1,37 +1,54 @@
 import { useState } from "react";
-import { Button } from "./Button";
-import type { FC, KeyboardEvent } from "react";
 
 interface ChatInputProps {
-  onSend: (text: string) => void;
+  onSend: (message: string) => void;
 }
 
-const ChatInput: FC<ChatInputProps> = ({ onSend }) => {
-  const [text, setText] = useState("");
+const ChatInput = ({ onSend }: ChatInputProps) => {
+  const [message, setMessage] = useState("");
 
-  const handleSend = () => {
-    if (text.trim()) {
-      onSend(text);
-      setText("");
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (message.trim()) {
+      onSend(message);
+      setMessage("");
     }
   };
 
-  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleSend();
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
   };
 
   return (
-    <div className="flex gap-2 mt-4">
-      <input
-        type="text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyPress}
-        placeholder="Type a message..."
-        className="flex-1 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
-      />
-      <Button onClick={handleSend}>Send</Button>
-    </div>
+    <form onSubmit={handleSubmit} className="flex gap-2">
+      <div className="flex-1 relative">
+        <input
+          type="text"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Type a message... (Use @chatgpt to ask AI)"
+          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        {message.toLowerCase().startsWith("@chatgpt") ||
+        message.toLowerCase().startsWith("@ai") ||
+        message.toLowerCase().startsWith("@gpt") ? (
+          <div className="absolute -top-8 left-0 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+            ChatGPT will respond to both users
+          </div>
+        ) : null}
+      </div>
+      <button
+        type="submit"
+        disabled={!message.trim()}
+        className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Send
+      </button>
+    </form>
   );
 };
 
