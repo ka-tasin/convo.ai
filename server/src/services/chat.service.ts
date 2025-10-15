@@ -1,34 +1,71 @@
-import { IChatRepository } from "../repositories/interfaces/IChat.repository";
-import { IMessage } from "../models/chat.model";
+import { Message } from "../types";
+import { Message as MessageModel } from "../models/message.model";
 
 export class ChatService {
-  constructor(private chatRepo: IChatRepository) {}
+  private conversations: Record<string, Message[]> = {};
 
-  async sendMessage(sender: string, receiver: string, content: string) {
-    let chat = await this.chatRepo.findChatBetweenUsers(sender, receiver);
-    const message: IMessage = {
-      sender,
-      receiver,
-      content,
-      createdAt: new Date(),
-    };
+  getConversationKey(id1: string, id2: string): string {
+    return [id1, id2].sort().join("_");
+  }
 
-    if (!chat) {
-      chat = await this.chatRepo.createChat([sender, receiver]);
+  async saveMessage(msg: Message): Promise<void> {
+    const key = this.getConversationKey(msg.senderId, msg.receiverId);
+
+    if (!this.conversations[key]) {
+      this.conversations[key] = [];
+    }
+    this.conversations[key].push(msg);
+
+    // Optional: Save to database
+    try {
+      await MessageModel.create({
+        ...msg,
+        conversationKey: key,
+      });
+    } catch (error) {
+      console.error("Failed to save message to database:", error);
+    }
+  }
+
+  async getConversation(userId: string, otherId: string): Promise<Message[]> {
+    const key = this.getConversationKey(userId, otherId);
+
+    if (this.conversations[key]) {
+      return this.conversations[key];
     }
 
-    return await this.chatRepo.addMessage(chat.id, message);
+    // Load from database if not in memory
+    try {
+      const dbMessages = await MessageModel.find({ conversationKey: key })
+        .sort({ timestamp: 1 })
+        .lean();
+
+      this.conversations[key] = dbMessages as Message[];
+      return this.conversations[key];
+    } catch (error) {
+      console.error("Failed to load messages from database:", error);
+      return [];
+    }
   }
 
-  // Returns the chat object, including messages
-  async getChat(user1: string, user2: string) {
-    const chat = await this.chatRepo.findChatBetweenUsers(user1, user2);
-    return chat || { id: null, users: [user1, user2], messages: [] };
-  }
+  getPendingMessages(userId: string, lastSeen: number): Message[] {
+    const pendingMessages: Message[] = [];
 
-  // Helper to get just the messages array
-  async getMessages(user1: string, user2: string) {
-    const chat = await this.getChat(user1, user2);
-    return chat.messages;
+    Object.entries(this.conversations).forEach(([key, msgs]) => {
+      if (key.includes(userId)) {
+        const userMessages = msgs.filter(
+          (msg) =>
+            msg.receiverId === userId &&
+            !msg.isChatGPT &&
+            msg.timestamp > lastSeen
+        );
+        pendingMessages.push(...userMessages);
+      }
+    });
+
+    return pendingMessages;
   }
 }
+
+// ✅ Export the instance, not the class
+export const chatService = new ChatService();
