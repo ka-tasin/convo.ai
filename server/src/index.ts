@@ -44,18 +44,43 @@ if (
   }
 }
 
-// ------------------ Online Users ------------------
+// ------------------ User Management ------------------
 interface OnlineUser {
   socketId: string;
   username: string;
 }
+
+interface StoredUser {
+  username: string;
+  lastSeen?: number;
+}
+
+interface User {
+  id: string;
+  username: string;
+  isOnline: boolean;
+  lastSeen: number | undefined;
+}
+
 const onlineUsers: Record<string, OnlineUser> = {};
+const allUsers: Record<string, StoredUser> = {};
+
 const emitOnlineUsers = () => {
   const users = Object.entries(onlineUsers).map(([id, data]) => ({
     id,
     username: data.username,
   }));
   io.emit("onlineUsers", users);
+};
+
+const emitAllUsers = () => {
+  const usersList: User[] = Object.entries(allUsers).map(([id, data]) => ({
+    id,
+    username: data.username,
+    isOnline: !!onlineUsers[id],
+    lastSeen: data.lastSeen,
+  }));
+  io.emit("allUsers", usersList);
 };
 
 // ------------------ Conversations ------------------
@@ -137,6 +162,12 @@ function getPortfolioAIResponse(question: string): string {
       "⭐ Features: Real-time chat, online users, AI integration, JWT auth, responsive design!",
     "real time":
       "⚡ Yes! This uses Socket.io for instant messaging between users - no page refresh needed!",
+
+    // Offline messaging
+    "offline message":
+      "💤 You can message offline users! They'll see your messages when they come back online.",
+    "message offline":
+      "📨 Messages to offline users are stored and delivered when they reconnect. Perfect for async communication!",
   };
 
   // Exact matches first
@@ -235,16 +266,70 @@ async function getOpenAIResponse(
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
+  // Get all users (for new connections)
+  socket.on("getAllUsers", () => {
+    emitAllUsers();
+  });
+
   socket.on("registerUser", (token: string) => {
     try {
       const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+
+      // Store user in allUsers if not exists
+      if (!allUsers[decoded.id]) {
+        allUsers[decoded.id] = {
+          username: decoded.username,
+          lastSeen: Date.now(),
+        };
+      }
+
+      // Update online users
       onlineUsers[decoded.id] = {
         socketId: socket.id,
         username: decoded.username,
       };
+
+      // Update last seen
+      if (allUsers[decoded.id]) {
+        if (allUsers[decoded.id]) {
+          if (allUsers[decoded.id]) {
+            allUsers[decoded.id].lastSeen = Date.now();
+          }
+        }
+      }
+
+      console.log(`User ${decoded.username} (${decoded.id}) came online`);
+
+      // Emit updated user lists
       emitOnlineUsers();
+      emitAllUsers();
+
+      // Check for pending messages for this user
+      const pendingMessages: Message[] = [];
+      Object.entries(conversations).forEach(([key, msgs]) => {
+        if (key.includes(decoded.id)) {
+          // Find messages sent to this user while they were offline
+          const userMessages = msgs.filter(
+            (msg) =>
+              msg.receiverId === decoded.id &&
+              !msg.isChatGPT &&
+              msg.timestamp > (allUsers[decoded.id]?.lastSeen || 0)
+          );
+          pendingMessages.push(...userMessages);
+        }
+      });
+
+      // Send any pending messages
+      if (pendingMessages.length > 0) {
+        console.log(
+          `Delivering ${pendingMessages.length} pending messages to ${decoded.username}`
+        );
+        pendingMessages.forEach((msg) => {
+          socket.emit("receiveMessage", msg);
+        });
+      }
     } catch (err) {
-      console.log("Invalid token");
+      console.log("Invalid token during registration");
     }
   });
 
@@ -254,16 +339,29 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendMessage", async (msg: Message) => {
-    // Save message
+    // Save message to conversation
     const key = getConversationKey(msg.senderId, msg.receiverId);
     if (!conversations[key]) conversations[key] = [];
     conversations[key].push(msg);
 
-    // Emit to receiver
+    // Check if receiver is online
     const receiver = onlineUsers[msg.receiverId];
-    if (receiver) io.to(receiver.socketId).emit("receiveMessage", msg);
 
-    // Emit back to sender
+    if (receiver) {
+      // Receiver is online - deliver immediately
+      io.to(receiver.socketId).emit("receiveMessage", msg);
+      console.log(`Message delivered immediately to ${receiver.username}`);
+    } else {
+      // Receiver is offline - store message for later delivery
+      console.log(`Message stored for offline user ${msg.receiverId}`);
+
+      // Update last seen for receiver
+      if (allUsers[msg.receiverId] !== undefined) {
+        allUsers[msg.receiverId]!.lastSeen = Date.now();
+      }
+    }
+
+    // Always emit back to sender for UI update
     socket.emit("receiveMessage", msg);
 
     // Check if message is asking AI
@@ -282,7 +380,7 @@ io.on("connection", (socket) => {
         const senderUser = onlineUsers[msg.senderId];
         const receiverUser = onlineUsers[msg.receiverId];
 
-        if (senderUser && receiverUser) {
+        if (senderUser) {
           // Remove the trigger prefixes
           let question = msg.content;
           const prefixes = ["@chatgpt", "@ai", "@gpt", "@assistant"];
@@ -301,7 +399,7 @@ io.on("connection", (socket) => {
               question,
               key,
               senderUser.username,
-              receiverUser.username
+              receiverUser?.username || "User"
             );
           } else {
             aiResponse = getPortfolioAIResponse(question);
@@ -320,8 +418,10 @@ io.on("connection", (socket) => {
           // Save AI response to conversation
           conversations[key].push(aiMsg);
 
-          // Send AI response to both users
-          io.to(socket.id).emit("receiveMessage", aiMsg);
+          // Send AI response to sender
+          socket.emit("receiveMessage", aiMsg);
+
+          // Send AI response to receiver if online
           if (receiver) {
             io.to(receiver.socketId).emit("receiveMessage", aiMsg);
           }
@@ -339,7 +439,7 @@ io.on("connection", (socket) => {
           isChatGPT: true,
         };
 
-        io.to(socket.id).emit("receiveMessage", fallbackMsg);
+        socket.emit("receiveMessage", fallbackMsg);
         if (receiver) {
           io.to(receiver.socketId).emit("receiveMessage", fallbackMsg);
         }
@@ -347,20 +447,105 @@ io.on("connection", (socket) => {
     }
   });
 
+  // User typing indicators
+  socket.on("typingStart", ({ userId, receiverId }) => {
+    const receiver = onlineUsers[receiverId];
+    if (receiver) {
+      io.to(receiver.socketId).emit("userTyping", { userId, isTyping: true });
+    }
+  });
+
+  socket.on("typingStop", ({ userId, receiverId }) => {
+    const receiver = onlineUsers[receiverId];
+    if (receiver) {
+      io.to(receiver.socketId).emit("userTyping", { userId, isTyping: false });
+    }
+  });
+
+  // Get user status
+  socket.on("getUserStatus", (userId: string) => {
+    const isOnline = !!onlineUsers[userId];
+    const userData = allUsers[userId];
+    socket.emit("userStatus", {
+      userId,
+      isOnline,
+      lastSeen: userData?.lastSeen,
+    });
+  });
+
   socket.on("disconnect", () => {
+    let disconnectedUserId: string | null = null;
+    let disconnectedUsername: string | null = null;
+
+    // Find and remove from online users
     for (const id in onlineUsers) {
       const user = onlineUsers[id];
       if (user && user.socketId === socket.id) {
+        disconnectedUserId = id;
+        disconnectedUsername = user.username;
         delete onlineUsers[id];
+        break;
       }
     }
-    emitOnlineUsers();
+
+    if (disconnectedUserId) {
+      console.log(
+        `User ${disconnectedUsername} (${disconnectedUserId}) went offline`
+      );
+
+      // Update last seen
+      if (disconnectedUserId && allUsers[disconnectedUserId]) {
+        allUsers[disconnectedUserId]!.lastSeen = Date.now();
+      }
+
+      // Emit updated lists
+      emitOnlineUsers();
+      emitAllUsers();
+    }
+
     console.log("Client disconnected:", socket.id);
+  });
+});
+
+// API route to get all users (optional REST endpoint)
+app.get("/api/users", (req, res) => {
+  const usersList: User[] = Object.entries(allUsers).map(([id, data]) => ({
+    id,
+    username: data.username,
+    isOnline: !!onlineUsers[id],
+    lastSeen: data.lastSeen,
+  }));
+  res.json(usersList);
+});
+
+// API route to get user status
+app.get("/api/users/:id/status", (req, res) => {
+  const userId = req.params.id;
+  const isOnline = !!onlineUsers[userId];
+  const userData = allUsers[userId];
+
+  res.json({
+    userId,
+    isOnline,
+    lastSeen: userData?.lastSeen,
+    username: userData?.username,
+  });
+});
+
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "OK",
+    onlineUsers: Object.keys(onlineUsers).length,
+    totalUsers: Object.keys(allUsers).length,
+    mode: useOpenAI ? "LIVE (OpenAI)" : "PORTFOLIO (Demo AI)",
+    timestamp: new Date().toISOString(),
   });
 });
 
 server.listen(process.env.PORT || 5000, () => {
   console.log(`🚀 Server running on port ${process.env.PORT || 5000}`);
+  console.log(`📊 Storage: ${Object.keys(allUsers).length} total users`);
 
   if (useOpenAI) {
     console.log("🎯 LIVE MODE - OpenAI GPT enabled");
@@ -369,6 +554,7 @@ server.listen(process.env.PORT || 5000, () => {
     );
   } else {
     console.log("🎯 PORTFOLIO MODE - Demo AI enabled (always works)");
+    console.log("👥 All Users Feature: Message anyone, online or offline");
     console.log(
       "💡 Test commands: @ai hello, @ai portfolio, @ai how does this work"
     );
