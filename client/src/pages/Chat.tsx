@@ -57,7 +57,7 @@ const Chat = () => {
           currentChatUserRef.current &&
           (msg.senderId === currentChatUserRef.current.id ||
             msg.receiverId === currentChatUserRef.current.id ||
-            msg.senderId === "chatgpt")
+            msg.senderId === "ai")
         ) {
           return [...prev, msg];
         }
@@ -94,8 +94,8 @@ const Chat = () => {
   };
 
   const getMessageDisplayName = (msg: Message) => {
-    if (msg.senderId === "chatgpt") {
-      return "ChatGPT";
+    if (msg.senderId === "ai") {
+      return "AI Assistant";
     }
     return msg.senderId === userId ? "You" : msg.senderName;
   };
@@ -108,7 +108,7 @@ const Chat = () => {
         {onlineUsers.map((user) => (
           <div
             key={user.id}
-            className={`p-2 cursor-pointer hover:bg-gray-200 ${
+            className={`p-2 cursor-pointer hover:bg-gray-200 rounded ${
               currentChatUser?.id === user.id ? "bg-gray-300" : ""
             }`}
             onClick={() => startConversation(user)}
@@ -117,18 +117,30 @@ const Chat = () => {
           </div>
         ))}
 
-        {/* ChatGPT Info */}
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-bold text-blue-800 mb-2">ChatGPT Assistant</h3>
-          <p className="text-sm text-blue-600">
-            To ask ChatGPT, start your message with <code>@chatgpt</code>,{" "}
-            <code>@ai</code>, or <code>@gpt</code>, or simply ask a question
-            ending with ?
+        {/* AI Assistant Info */}
+        <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+          <div className="flex items-center mb-2">
+            <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mr-2">
+              <span className="text-white text-xs font-bold">AI</span>
+            </div>
+            <h3 className="font-bold text-purple-800">AI Assistant Demo</h3>
+          </div>
+          <p className="text-sm text-purple-700 mb-2">
+            🎯 Portfolio Mode - Always works!
           </p>
-          <p className="text-xs text-blue-500 mt-2">
-            Both you and {currentChatUser?.username || "the other user"} will
-            see ChatGPT's responses.
-          </p>
+          <div className="text-xs space-y-1 text-purple-600">
+            <p>
+              <strong>Try:</strong> @ai hello, @ai portfolio, @ai how does this
+              work
+            </p>
+            <p>
+              <strong>Features:</strong> Real-time chat, AI integration, User
+              auth
+            </p>
+            <p>
+              <strong>Tech:</strong> React, Node.js, Socket.io, MongoDB
+            </p>
+          </div>
         </div>
       </div>
 
@@ -139,7 +151,7 @@ const Chat = () => {
             <div className="p-4 border-b bg-white">
               <h2 className="font-bold">{currentChatUser.username}</h2>
               <p className="text-sm text-gray-500">
-                Chat with {currentChatUser.username} and ChatGPT
+                Chat with {currentChatUser.username} and AI Assistant
               </p>
             </div>
 
@@ -148,8 +160,7 @@ const Chat = () => {
                 <div className="text-center text-gray-400 mt-8">
                   <p>No messages yet. Start a conversation!</p>
                   <p className="text-sm mt-2">
-                    Tip: Ask ChatGPT by starting with @chatgpt or asking a
-                    question
+                    Tip: Ask the AI by starting with @ai or asking a question
                   </p>
                 </div>
               ) : (
@@ -159,7 +170,7 @@ const Chat = () => {
                     className={`mb-4 flex flex-col ${
                       msg.senderId === userId
                         ? "items-end"
-                        : msg.senderId === "chatgpt"
+                        : msg.senderId === "ai"
                         ? "items-center"
                         : "items-start"
                     }`}
@@ -181,7 +192,7 @@ const Chat = () => {
                     <ChatMessage
                       text={msg.content}
                       isUser={msg.senderId === userId}
-                      isChatGPT={msg.senderId === "chatgpt"}
+                      isChatGPT={msg.senderId === "ai"}
                     />
                   </div>
                 ))
@@ -198,7 +209,7 @@ const Chat = () => {
             <div className="text-center">
               <p>Select a user to start chatting</p>
               <p className="text-sm mt-2">
-                ChatGPT is available in all conversations
+                AI Assistant is available in all conversations
               </p>
             </div>
           </div>
