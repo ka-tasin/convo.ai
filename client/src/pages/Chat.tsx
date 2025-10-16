@@ -22,6 +22,10 @@ interface User extends TokenPayload {
   isOnline: boolean;
 }
 
+interface UnreadMessages {
+  [userId: string]: number; // Track count of unread messages per user
+}
+
 const Chat = () => {
   const [userId, setUserId] = useState("");
   const [username, setUsername] = useState("");
@@ -32,6 +36,7 @@ const Chat = () => {
   );
   const [messages, setMessages] = useState<Message[]>([]);
   const [isAIThinking, setIsAIThinking] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState<UnreadMessages>({});
   const currentChatUserRef = useRef<TokenPayload | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -39,6 +44,64 @@ const Chat = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Load unread messages from localStorage on component mount
+  useEffect(() => {
+    const savedUnreads = localStorage.getItem("unreadMessages");
+    if (savedUnreads) {
+      setUnreadMessages(JSON.parse(savedUnreads));
+    }
+  }, []);
+
+  // Save unread messages to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem("unreadMessages", JSON.stringify(unreadMessages));
+  }, [unreadMessages]);
+
+  // Debug useEffect - remove this in production
+  useEffect(() => {
+    const debugHandler = (event: string, data: unknown) => {
+      console.log(`Socket event: ${event}`, data);
+    };
+
+    socket.on("receiveMessage", (data) => debugHandler("receiveMessage", data));
+    socket.on("conversationLoaded", (data) =>
+      debugHandler("conversationLoaded", data)
+    );
+
+    return () => {
+      socket.off("receiveMessage", debugHandler);
+      socket.off("conversationLoaded", debugHandler);
+    };
+  }, []);
+
+  // Play notification sound
+  const playNotificationSound = () => {
+    // Create a simple notification sound using the Web Audio API
+    try {
+      const audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = 800;
+      oscillator.type = "sine";
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.01,
+        audioContext.currentTime + 0.2
+      );
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.2);
+    } catch {
+      console.log("Audio context not supported");
+    }
+  };
 
   // Load current user & register socket
   useEffect(() => {
@@ -49,16 +112,19 @@ const Chat = () => {
     setUserId(decoded.id);
     setUsername(decoded.username);
 
+    console.log("Registering user:", decoded.id, decoded.username);
     socket.emit("registerUser", token);
 
     // Load all users when component mounts
     socket.emit("getAllUsers");
 
     socket.on("allUsers", (users: User[]) => {
+      console.log("All users received:", users);
       setAllUsers(users.filter((u) => u.id !== decoded.id));
     });
 
     socket.on("onlineUsers", (users: TokenPayload[]) => {
+      console.log("Online users received:", users);
       const onlineUserIds = users.map((u) => u.id);
       setOnlineUsers(users.filter((u) => u.id !== decoded.id));
 
@@ -71,55 +137,123 @@ const Chat = () => {
       );
     });
 
-    // Always listen for messages
-    socket.on("receiveMessage", (msg: Message) => {
+    // Handle conversation loading
+    const handleConversationLoaded = (msgs: Message[]) => {
+      console.log("Conversation loaded:", msgs);
+      setMessages(msgs);
+    };
+
+    socket.on("conversationLoaded", handleConversationLoaded);
+
+    // Handle incoming messages
+    const handleReceiveMessage = (msg: Message) => {
+      console.log("Received message:", msg);
+
       // Hide loading state when AI responds
       if (msg.senderId === "ai") {
+        console.log("AI response received, hiding thinking indicator");
         setIsAIThinking(false);
       }
 
+      // Check if this message is for the current user but NOT in the current conversation
+      const isMessageForCurrentUser =
+        msg.receiverId === userId || msg.senderId === "ai";
+      const isFromCurrentChatUser =
+        msg.senderId === currentChatUserRef.current?.id;
+      const isNotCurrentConversation =
+        !isFromCurrentChatUser && msg.senderId !== "ai";
+
+      if (isMessageForCurrentUser && isNotCurrentConversation) {
+        // Increment unread count for this sender
+        setUnreadMessages((prev) => ({
+          ...prev,
+          [msg.senderId]: (prev[msg.senderId] || 0) + 1,
+        }));
+
+        // Play notification sound
+        playNotificationSound();
+      }
+
       setMessages((prev) => {
-        // If the message belongs to the current conversation, append
-        if (
-          currentChatUserRef.current &&
-          (msg.senderId === currentChatUserRef.current.id ||
-            msg.receiverId === currentChatUserRef.current.id ||
-            msg.senderId === "ai")
-        ) {
-          return [...prev, msg];
+        // Check if this message belongs to the current conversation
+        const isCurrentConversation =
+          (msg.senderId === userId &&
+            msg.receiverId === currentChatUserRef.current?.id) ||
+          (msg.senderId === currentChatUserRef.current?.id &&
+            msg.receiverId === userId) ||
+          (msg.senderId === "ai" &&
+            (msg.receiverId === userId ||
+              msg.receiverId === currentChatUserRef.current?.id));
+
+        console.log("Is current conversation:", isCurrentConversation, {
+          msgSender: msg.senderId,
+          msgReceiver: msg.receiverId,
+          userId,
+          currentChatUserId: currentChatUserRef.current?.id,
+        });
+
+        if (isCurrentConversation) {
+          // Avoid duplicates
+          const exists = prev.some(
+            (m) =>
+              Math.abs(m.timestamp - msg.timestamp) < 1000 &&
+              m.content === msg.content &&
+              m.senderId === msg.senderId
+          );
+
+          if (!exists) {
+            console.log("Adding new message to conversation");
+            return [...prev, msg];
+          } else {
+            console.log("Message already exists, skipping");
+          }
+        } else {
+          console.log("Message not for current conversation, skipping");
         }
         return prev;
       });
-    });
+    };
+
+    socket.on("receiveMessage", handleReceiveMessage);
 
     return () => {
       socket.off("allUsers");
       socket.off("onlineUsers");
-      socket.off("receiveMessage");
+      socket.off("conversationLoaded", handleConversationLoaded);
+      socket.off("receiveMessage", handleReceiveMessage);
     };
-  }, []);
+  }, [userId]);
 
   const startConversation = (user: TokenPayload) => {
+    console.log("Starting conversation with:", user);
     setCurrentChatUser(user);
     currentChatUserRef.current = user;
     setMessages([]);
-    setIsAIThinking(false); // Reset loading state
+    setIsAIThinking(false);
 
-    // Load previous messages
+    // Clear unread messages for this user
+    setUnreadMessages((prev) => {
+      const newUnreads = { ...prev };
+      delete newUnreads[user.id];
+      return newUnreads;
+    });
+
+    // Load previous messages for this conversation
     socket.emit("loadConversation", { userId, otherId: user.id });
-    socket.once("conversationLoaded", (msgs: Message[]) => setMessages(msgs));
   };
 
   const handleSend = (text: string) => {
     if (!text.trim() || !currentChatUser) return;
 
-    // Check if this is an AI question
+    // Check if this is an AI question - use includes instead of startsWith for better detection
     const isAskingAI =
-      text.toLowerCase().startsWith("@chatgpt") ||
-      text.toLowerCase().startsWith("@ai") ||
-      text.toLowerCase().startsWith("@gpt") ||
-      text.toLowerCase().startsWith("@assistant") ||
+      text.toLowerCase().includes("@chatgpt") ||
+      text.toLowerCase().includes("@ai") ||
+      text.toLowerCase().includes("@gpt") ||
+      text.toLowerCase().includes("@assistant") ||
       text.trim().endsWith("?");
+
+    console.log("Sending message, isAskingAI:", isAskingAI, "Content:", text);
 
     const msg: Message = {
       senderId: userId,
@@ -133,12 +267,28 @@ const Chat = () => {
 
     // Show loading state for AI questions
     if (isAskingAI) {
+      console.log("Showing AI thinking indicator");
       setIsAIThinking(true);
 
-      // Safety timeout - hide loading after 10 seconds if no response
+      // Safety timeout - hide loading after 15 seconds if no response
       setTimeout(() => {
-        setIsAIThinking(false);
-      }, 10000);
+        if (isAIThinking) {
+          console.log("AI response timeout reached");
+          setIsAIThinking(false);
+
+          // Optional: Show timeout message
+          const timeoutMsg: Message = {
+            senderId: "ai",
+            senderName: "AI Assistant",
+            receiverId: userId,
+            content:
+              "I'm having trouble responding right now. Please try again.",
+            timestamp: Date.now(),
+            isChatGPT: true,
+          };
+          setMessages((prev) => [...prev, timeoutMsg]);
+        }
+      }, 15000);
     }
   };
 
@@ -196,9 +346,18 @@ const Chat = () => {
                   currentChatUser?.id === user.id
                     ? "bg-blue-500/20 border-blue-400/40 shadow-2xl shadow-blue-500/20"
                     : "bg-gray-700/30 border-gray-600/30 hover:bg-gray-600/40 hover:border-gray-500/40 hover:shadow-lg"
-                }`}
+                } relative`}
                 onClick={() => startConversation(user)}
               >
+                {/* Unread message badge */}
+                {unreadMessages[user.id] > 0 && (
+                  <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-lg border border-red-300/50 z-10">
+                    {unreadMessages[user.id] > 9
+                      ? "9+"
+                      : unreadMessages[user.id]}
+                  </div>
+                )}
+
                 <div
                   className={`w-12 h-12 rounded-2xl flex items-center justify-center text-base font-semibold mr-4 transition-all duration-300 shadow-lg ${
                     currentChatUser?.id === user.id
@@ -219,6 +378,11 @@ const Chat = () => {
                     }`}
                   >
                     {user.username}
+                    {unreadMessages[user.id] > 0 && (
+                      <span className="ml-2 text-red-400 text-xs">
+                        ({unreadMessages[user.id]} new)
+                      </span>
+                    )}
                   </span>
                   <span
                     className={`text-xs flex items-center mt-1 ${
@@ -445,6 +609,12 @@ const Chat = () => {
                 Choose someone to start chatting. Message anyone - they'll see
                 it when they come online.
               </p>
+              {Object.keys(unreadMessages).length > 0 && (
+                <div className="mt-4 text-sm text-green-400 bg-green-400/10 px-4 py-2 rounded-lg border border-green-400/20">
+                  You have {Object.keys(unreadMessages).length} conversation(s)
+                  with unread messages
+                </div>
+              )}
             </div>
           </div>
         )}

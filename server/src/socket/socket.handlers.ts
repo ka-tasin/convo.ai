@@ -1,7 +1,7 @@
 import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { userService } from "../services/user.service";
-import { chatService } from "../services/chat.service"; // This should work now
+import { chatService } from "../services/chat.service";
 import { aiService } from "../services/ai.service";
 import { Message, TypingData } from "../types";
 
