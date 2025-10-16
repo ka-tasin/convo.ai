@@ -1,5 +1,5 @@
 import { io } from "socket.io-client";
 
-export const socket = io("http://localhost:5000", {
+export const socket = io("https://convo-ai-hdf2.onrender.com", {
   autoConnect: true,
 });
