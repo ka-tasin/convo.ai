@@ -1,7 +1,7 @@
 # Convo.AI
 
 **Convo.AI** is a full-stack real-time chat application that enables seamless communication between users and an integrated AI assistant.  
-It’s built with a modular architecture focusing on scalability, clean backend structure, and efficient real-time data flow using Socket.io.  
+It’s built with an architecture focusing on scalability, clean backend structure, and efficient real-time data flow using Socket.io.  
 The backend is implemented with **Node.js**, **TypeScript**, **Socket.io**, **Express**, **MongoDB (Mongoose)**, and **JWT** for secure authentication.
 
 ---
