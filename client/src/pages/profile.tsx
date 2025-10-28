@@ -5,7 +5,7 @@ import { jwtDecode } from "jwt-decode";
 interface TokenPayload {
   id: string;
   username: string;
-  email?: string;
+  email: string;
 }
 
 interface UserProfile {
@@ -36,9 +36,10 @@ const Profile: FC = () => {
         const decoded = jwtDecode<TokenPayload>(token);
         setUserId(decoded.id);
         setUsername(decoded.username);
+        setEmail(decoded.email); // Set email directly from JWT token
         
         // Load additional user data
-        await loadUserProfile(decoded.id);
+        await loadUserProfile(decoded.id, decoded.email);
       } catch (error) {
         console.error("Error loading profile:", error);
       } finally {
@@ -49,26 +50,25 @@ const Profile: FC = () => {
     loadProfile();
   }, []);
 
-  const loadUserProfile = async (userId: string) => {
+  const loadUserProfile = async (userId: string, userEmail: string) => {
     // Try to load from localStorage first
     const savedProfile = localStorage.getItem(`userProfile_${userId}`);
     if (savedProfile) {
       const profile: UserProfile = JSON.parse(savedProfile);
-      setEmail(profile.email);
+      // Use email from JWT token instead of localStorage
       setIsOnline(profile.isOnline);
       setLastSeen(profile.lastSeen as number);
       setCreatedAt(profile.createdAt);
     } else {
-      // Default data based on user info
+      // Create profile with email from JWT token
       const defaultProfile: UserProfile = {
         id: userId,
         username: username,
-        email: `${username.toLowerCase()}@example.com`,
+        email: userEmail, // Use the email from JWT token
         isOnline: true,
         createdAt: Date.now(),
       };
       
-      setEmail(defaultProfile.email);
       setIsOnline(defaultProfile.isOnline);
       setCreatedAt(defaultProfile.createdAt);
       
@@ -169,7 +169,7 @@ const Profile: FC = () => {
               <span className="mr-2">📧</span>
               Email Address
             </label>
-            <div className="text-white font-medium px-4 py-3 bg-gray-700/30 rounded-xl border border-gray-600/30">
+            <div className="text-white font-medium px-4 py-3 bg-gray-700/30 rounded-xl border border-gray-600/30 break-all">
               {email}
             </div>
           </div>
@@ -206,10 +206,7 @@ const Profile: FC = () => {
               <span className="text-white font-medium">{formatDate(createdAt)}</span>
             </div>
             
-            <div className="flex justify-between items-center py-2">
-              <span className="text-gray-400">Account type</span>
-              <span className="text-blue-400 font-medium">Standard</span>
-            </div>
+           
           </div>
         </div>
 
